@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "960470622132",
+    "project_id": "yescom-user-app-test",
+    "storage_bucket": "yescom-user-app-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:960470622132:android:6043bc1203dd47a3c89ce1",
+        "android_client_info": {
+          "package_name": "com.test.yescom_front"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARiA_jZqjUjXYd-Xjdw20q6WRdpm6dAmk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
