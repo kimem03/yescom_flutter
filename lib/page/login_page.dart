@@ -1,4 +1,5 @@
 import 'dart:convert';  // JSON 인코딩/디코딩에 필요함
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -6,11 +7,21 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:yescom_front/api/server_service.dart';
 
 import 'home_page.dart';
+import '../providers/user_info.dart';   // 전역 변수 import
+
+// 상태 정보 전송 함수
+class LoginUtils {
+  static String sendStatus(String phone, String id, String pw) {
+    String hexPw = utf8.encode(pw).map((e) => e.toRadixString(16).padRight(2, '0')).join();
+    return "phone=$phone&id=$id&pw=$hexPw&method=currentstatus";
+  }
+}
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,8 +32,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   // id pw 저장을 위한 storage
-  final storage = new FlutterSecureStorage(); // FlutterSecureStorage를 storage로 저장
-  dynamic userInfo = '';    // storage에 있는 유저 정보를 저장
+  final storage = const FlutterSecureStorage(); // FlutterSecureStorage를 storage로 저장
 
   bool _idChecked = false;  // id 저장 체크 (기본: false)
   bool _pwChecked = false;  // pw 저장 체크 (기본: false)
@@ -45,7 +55,7 @@ class _LoginPageState extends State<LoginPage> {
   String savedPw = "";      // pw 저장
 
   String serverAddress = "";  // 서버 주소
-  String  result = "";    // json 결과값
+  String result = "";    // json 결과값
 
   bool isAuthNoEnable = false;  // 인증번호 활성화 여부 (기본: false)
   bool isButtonEnable = false;  // 버튼 활성화 여부 (기본: false)
@@ -65,13 +75,18 @@ class _LoginPageState extends State<LoginPage> {
   void initState(){
     super.initState();
     _loadAuth();
-    _loadIdPw();
+    _initState();
 
     // 입력한 변경을 감지하여 버튼 상태 업데이트
     _phoneController.addListener((){
       setState(() {
         isButtonEnable = _phoneController.text.trim().isNotEmpty;
       });
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_){
+      _loadId();
+      _loadPw();
     });
   }
 
@@ -82,33 +97,71 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // id pw 저장
-  Future<void> _saveIdPw() async {
+  // 저장된 체크박스 상태와 id pw 불러오기
+  Future<void> _initState() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    if(_idChecked){
-      prefs.setBool('_idChecked', true);
-      await storage.write(key: 'savedId', value: _idChecked ? id : null);
-    }
-
-    if(_pwChecked){
-      prefs.setBool('_pwChecked', true);
-      await storage.write(key: 'savedPw', value: _pwChecked ? pw : null);
-    }
-  }
-
-  // 저장된 id pw 읽기
-  Future<void> _loadIdPw() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    savedId = await storage.read(key: 'savedId') ?? '';
-    savedPw = await storage.read(key: 'savedPw') ?? '';
 
     setState(() {
       _idChecked = prefs.getBool('_idChecked') ?? false;
       _pwChecked = prefs.getBool('_pwChecked') ?? false;
-      _idController.text = _idChecked ? savedId : '';
-      _pwController.text = _pwChecked ? savedPw : '';
+    });
+
+    if (_idChecked) {await _loadId();}
+    if (_pwChecked) {await _loadPw();}
+  }
+
+  // id 저장
+  Future<void> _saveId() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setBool('_idChecked', _idChecked);
+    if (_idChecked) {
+      await storage.write(key: 'savedId', value: _idController.text.trim());
+    } else {
+      await _clearId(); // 체크 해제 시 ID 삭제
+    }
+  }
+
+  // PW 저장
+  Future<void> _savePw() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setBool('_pwChecked', _pwChecked);
+
+    if (_pwChecked) {
+      await storage.write(key: 'savedPw', value: _pwController.text.trim());
+    } else {
+      await _clearPw(); // 체크 해제 시 PW 삭제
+    }
+  }
+
+  // 저장된 ID 불러오기
+  Future<void> _loadId() async {
+    String? savedId = await storage.read(key: 'savedId');
+    setState(() {
+      _idController.text = savedId ?? '';
+    });
+  }
+
+  // 저장된 PW 불러오기
+  Future<void> _loadPw() async {
+    String? savedPw = await storage.read(key: 'savedPw');
+    setState(() {
+      _pwController.text = savedPw ?? '';
+    });
+  }
+
+  // ID 초기화
+  Future<void> _clearId() async {
+    await storage.delete(key: 'savedId');
+    setState(() {
+      _idController.clear();
+    });
+  }
+
+  // PW 초기화
+  Future<void> _clearPw() async {
+    await storage.delete(key: 'savedPw');
+    setState(() {
+      _pwController.clear();
     });
   }
 
@@ -149,6 +202,10 @@ class _LoginPageState extends State<LoginPage> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       savedPhone = prefs.getString('savedPhone') ?? '';
     }
+    // if (Provider.of<UserInfo>(context, listen: false).phone.isEmpty) {
+    //   SharedPreferences prefs = await SharedPreferences.getInstance();
+    //   savedPhone = prefs.getString('savedPhone') ?? '';
+    // }
 
     // 서버 주소 받아오기
     // Future<String>이기 때문에 비동기로 받아야 함 (await)
@@ -173,21 +230,15 @@ class _LoginPageState extends State<LoginPage> {
           });
 
           if(result == 'OK'){
-            print("서버 응답 성공: ${response.body}");
-            print(loginUrl);
           } else {
             _showDialog("로그인 실패", "아이디와 비밀번호를 확인해주세요.");
           }
-
-        } else {
-          print("서버 응답 실패: ${response.statusCode}");
         }
       } catch (e) {
-        print("데이터 전송 중 오류 발생: $e");
+        log("데이터 전송 중 오류 발생: $e");
       }
     } else if (id.isEmpty || pw.isEmpty) {
       _showDialog("로그인 실패", "아이디와 비밀번호를 입력해주세요.");
-      print('$id \n $pw');
     }
   }
   // 로그인 정보 전송
@@ -229,12 +280,10 @@ class _LoginPageState extends State<LoginPage> {
           });
 
           if(result == 'OK'){
-            print("서버 응답 성공: ${response.body}");
-            print(mobileUrl);
           }
         }
       } catch (e) {
-        print("단말기 정보 전송 중 오류 발생: $e");
+        log("단말기 정보 전송 중 오류 발생: $e");
       }
     }
   }
@@ -275,14 +324,11 @@ class _LoginPageState extends State<LoginPage> {
             );
 
             _checkAuth();
-            print("서버 응답 성공: ${response.body}");
-            print(stateUrl);
-            print("saved phone: $savedPhone");
-            print("인증 여부: $_isAuth");
+            // print(stateUrl);
           }
         }
       } catch (e) {
-        print("오류 발생: $e");
+        log("오류 발생: $e");
       }
     }
   }
@@ -301,20 +347,15 @@ class _LoginPageState extends State<LoginPage> {
       final response = await http.get(Uri.parse(authUrl));
 
       if (response.statusCode == 200) {
-        print("서버 응답 성공: ${response.body}");
         final Map<String, dynamic> jsonData = jsonDecode(response.body);
 
         setState(() {
           serverAuthNo = jsonData['Data']['AuthNo'];
           isAuthNoEnable = true; // 인증번호 입력 창 표시
         });
-        print("서버 인증번호: $serverAuthNo");
-        print(authUrl);
-      } else {
-        print("서버 응답 실패: ${response.statusCode}");
       }
     } catch (e) {
-      print("데이터 전송 중 오류 발생: $e");
+      log("데이터 전송 중 오류 발생: $e");
     }
   }
   // 인증 번호 받기 핸들러
@@ -362,6 +403,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    // UserInfo를 Provider를 통해 접근
+    var userInfo = Provider.of<UserInfo>(context);
     final Size size = MediaQuery.of(context).size;
 
     // 입력란
@@ -393,16 +436,12 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           keyboardType: TextInputType.text,
                           onChanged: (value) {
-                            setState(() {
-                              if(_idChecked) {
-                                _idController.text;
-                              }
-                            });
-                          }
-                          // onChanged: (value) {
-                          //   id = value;
-                          //   if (_idChecked) _saveIdPw(); // ID 저장
-                          // },
+                            if (_idChecked) {
+                              _saveId();
+                              savedId = _idController.text.trim();
+                            }
+                          },
+
                         ),
 
                         // pw 입력란
@@ -414,16 +453,10 @@ class _LoginPageState extends State<LoginPage> {
                           keyboardType: TextInputType.text,
                           obscureText: true,  // 내용 감추기
                           onChanged: (value) {
-                            setState(() {
-                              if(_pwChecked) {
-                                _pwController.text;
-                              }
-                            });
+                            if (_pwChecked) {
+                              _savePw();
+                            }
                           },
-                          // onChanged: (value) {
-                          //   pw = value;
-                          //   if (_pwChecked) _saveIdPw(); // PW 저장
-                          // },
                         ),
 
                         // 전화번호 입력란 (최초 1회만)
@@ -511,25 +544,26 @@ class _LoginPageState extends State<LoginPage> {
 
                         Row(
                           children: [
-                            Checkbox(value: _idChecked,
-                              onChanged: (bool? value){
+                            Checkbox(
+                              value: _idChecked,
+                              onChanged: (bool? value) async {
                                 setState(() {
-                                  _idChecked = value!;
+                                  _idChecked = value ?? false;
                                 });
-                                _saveIdPw();  // 저장 상태 업데이트
-                                if(_idChecked) _loadIdPw(); // 저장된 id를 로드
+                                await _saveId();
+                                if(!_idChecked) _clearId();
                               },
                               activeColor: const Color.fromRGBO(0, 93, 171, 1),
                             ),
                             const Text('ID 저장하기', style: TextStyle(fontSize: 18),),
 
                             Checkbox(value: _pwChecked,
-                              onChanged: (bool? value){
+                              onChanged: (bool? value) async {
                                 setState(() {
-                                  _pwChecked = value!;
+                                  _pwChecked = value ?? false;
                                 });
-                                _saveIdPw();  // 저장 상태 업데이트
-                                if(_pwChecked) _loadIdPw(); // 저장된 pw를 로드
+                                await _savePw();
+                                if(!_pwChecked) _clearPw();
                               },
                               activeColor: const Color.fromRGBO(0, 93, 171, 1),
                             ),
