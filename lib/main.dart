@@ -1,9 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:yescom_front/page/login_page.dart';
 
 import 'api/fcm_service.dart';
+import 'providers/user_info.dart';  // 전역 변수 import
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +14,13 @@ Future<void> main() async {
   FcmService fcmService = FcmService();
   fcmService.getDeviceToken();
 
-  runApp(MyApp());
+  // runApp(MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => UserInfo(),
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
