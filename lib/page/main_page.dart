@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cp949_codec/cp949_codec.dart';
+import 'package:yescom_front/widget/button.dart';
 
 import '../api/server_service.dart';
 import '../widget/appbar.dart';
-import '../page/login_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -19,11 +20,13 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
+  final PageStorageKey<String> dropdownKey = PageStorageKey<String>('dropdown');
   final storage = const FlutterSecureStorage(); // FlutterSecureStorage를 storage로 저장
   String serverAddress = "";   // 서버 주소
   String phone = "";
   String id = "";
   String pw = "";
+  String hexPw = "";
 
   List<String> custIdList = [];       // 관리 번호 배열
   List<String> hexCustNameList = [];  // 관리명 (hexadecimal) 배열
@@ -34,51 +37,32 @@ class _MainPageState extends State<MainPage> {
   String hexCustName = "";  // 관리명 (hexadecimal)
   String custName = "";     // 관리명 (decode)
   bool inGuard = false;      // 경계 = true, 해제 = false
+  int len = 0;
+  String savedCustId = "";
+  bool savedGuard = false;
 
   String? dropdownValue = "";  // 드롭다운 기본 요소
+
+  // 경계/해제 이미지 상태를 변경하는 메서드
+  void toggleGuard() {
+    setState(() {
+      savedGuard = !savedGuard;  // savedGuard 값을 반전시켜 경계/해제 상태를 변경
+    });
+  }
 
   @override
   void initState(){
     super.initState();
     _loadStatusInfo();
-    _loadData();
-  }
+    _loadStatus();
 
-  // 데이터를 불러오는 함수
-  Future<void> _loadData() async {
-    phone = await _loadPhone() ?? '';
-    id = await _loadId() ?? '';
-    pw = await _loadPw() ?? '';
-
-    // 서버 주소 불러오기
-    String serverAddress = await _serverAddress();
-
-    // 모든 값을 로드한 후, 상태 갱신
-    setState(() {
-      phone = phone;
-      id = id;
-      pw = pw;
-      this.serverAddress = serverAddress;
-    });
-  }
-
-  // 전화번호 불러오기
-  Future<String?> _loadPhone() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    phone = prefs.getString('savedPhone') ?? '';
-    return phone;
-  }
-
-  // id 불러오기
-  Future<String?> _loadId() async {
-    id = await storage.read(key: 'savedId') ?? '';
-    return id;
-  }
-
-  // pw 불러오기
-  Future<String?> _loadPw() async {
-    pw = await storage.read(key: 'savedPw') ?? '';
-    return pw;
+    if (custNameList.isNotEmpty) {
+      dropdownValue = custNameList.first;
+      custId = custIdList.first;
+      inGuard = inGuardList.first;
+    } else {
+      dropdownValue = ''; // 기본값을 설정
+    }
   }
 
   // 서버 주소 불러오기
@@ -89,47 +73,41 @@ class _MainPageState extends State<MainPage> {
     return serverAddress;
   }
 
-  // hexadecimal decoding
-  String decodeHexToKorean(String hex){
-    // hex 값을 byte로 변환
-    List<int> bytes = [];
-    for(int i = 0; i < hex.length; i += 2) {
-      String byteString = hex.substring(i, i+2);      // 두 자리씩 자르기
-      bytes.add(int.parse(byteString, radix: 16));    // 16진수 -> 10진수 변환
-    }
-
-    // 한글로 변환 UTF-8
-    String decodedString = utf8.decode(bytes);
-    return decodedString;
-  }
-
   // 현재 상태 불러오기
   Future<void> _loadStatusInfo() async {
-    // 서버 주소
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
     serverAddress = await _serverAddress();
+    phone = prefs.getString('savedPhone') ?? '';
+    id = await storage.read(key: 'savedId') ?? '';
+    pw = await storage.read(key: 'savedPw') ?? '';
+    hexPw = utf8.encode(pw).map((e) => e.toRadixString(16).padRight(2, '0')).join();
 
     // 정보 url
-    String status = LoginUtils.sendStatus(phone, id, pw);
-    String statusUrl = serverAddress + status;
+    String state = "phone=$phone&id=$id&pw=$hexPw&method=currentstatus";
+    String stateUrl = serverAddress + state;
 
     try {
-      final response = await http.get(Uri.parse(statusUrl));
+      final response = await http.get(Uri.parse(stateUrl));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonData = jsonDecode(response.body);
+        len = jsonData['Data'].length;
+        log("전송 url: $stateUrl");
+        log("$jsonData");
 
-        // 배열 길이 만큼 반복
-        for (int i = 0; i < jsonData['Data'].length; i++) {
-          // mounted가 true일 때만 setState 호출
-          if (mounted) {
-            setState(() {
-              custIdList.add(jsonData['Data'][i]['CustID']); // 관리 번호 추가
-              hexCustNameList.add(jsonData['Data'][i]['CustName']); // 관리명 (Hex) 추가
-              inGuardList.add(jsonData['Data'][i]['InGuard']); // 경계 상태 추가
-              custNameList.add(decodeHexToKorean(hexCustNameList[i]));
-            });
+        if (jsonData['Result'] == 'OK') {
+          jsonData['Data'].forEach((value) {
+            custIdList.add(value['CustID']);
+            hexCustNameList.add(value['CustName']);
+            inGuardList.add(value['InGuard']);
+          });
+          for (int i = 0; i < len; i++) {
+            custNameList.add(decodeHexToKorean(hexCustNameList[i]));
           }
         }
+      } else {
+        log("전송 실패: $stateUrl");
       }
     } catch (e) {
       log("오류 발생 $e");
@@ -137,22 +115,44 @@ class _MainPageState extends State<MainPage> {
   }
   // 현재 상태 불러오기
 
-  // 드롭다운 기본 값 정의
-  @override
-  void setState(VoidCallback fn) {
-    dropdownValue = custNameList.isNotEmpty ? custNameList[0] : '';
+  // hexadecimal decoding
+  String decodeHexToKorean(String hex){
+    // hex 값인지 확인 (16진수 형식 검증)
+    if (hex.isEmpty || hex.length % 2 != 0) {
+      log("Invalid hex string: $hex");
+      return "Invalid Data";
+    }
+
+    // hex 값을 byte로 변환
+    List<int> bytes = [];
+    for(int i = 0; i < hex.length; i += 2) {
+      String byteString = hex.substring(i, i+2);      // 두 자리씩 자르기
+      bytes.add(int.parse(byteString, radix: 16));    // 16진수 -> 10진수 변환
+    }
+
+    // cp949 디코드
+    String decodedCp949 = cp949.decode(bytes);
+
+    // utf-8 인코드
+    List<int> encodedUtf = utf8.encode(decodedCp949);
+
+    // utf-8로 변환된 문자열 다시 디코드
+    String decodedString = utf8.decode(encodedUtf);
+
+    // 한글로 변환 UTF-8
+    return decodedString;
   }
 
   // 드롭 다운 요소
   Widget _dropdown() {
-    // custNameList가 비어있는지 확인 후 기본값 설정
-    if (custNameList.isEmpty) {
-      dropdownValue = '';   // 공백 출력
-    } else {
+    if (custNameList.isNotEmpty) {
       dropdownValue = custNameList.first;
+      custId = custIdList.first;
+      inGuard = inGuardList.first;
     }
 
-    return DropdownButton(
+    return DropdownButton<String>(
+      key: dropdownKey,
       value: dropdownValue,
       items: custNameList.map<DropdownMenuItem<String>>((String value){
         return DropdownMenuItem<String>(
@@ -161,18 +161,95 @@ class _MainPageState extends State<MainPage> {
         );
       }).toList()
       , onChanged: (String? value) {
-        setState(() {
-          dropdownValue = value!;
-        });
+        if (value != null) {
+          setState(() {
+            dropdownValue = value;
+            // 선택된 값에 따라 `custId`와 `inGuard` 업데이트
+            int index = custNameList.indexOf(value);
+            custId = custIdList[index];
+            inGuard = inGuardList[index];
+            _saveStatus();
+            log('저장된 상태: $savedGuard');
+            log('저장된 id: $savedCustId');
+          });
+        }
       },
+    );
+  }
+  // 드롭 다운 요소
+
+  // 정보 저장
+  Future<void> _saveStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setString('savedCustId', custId);
+    // prefs.setBool('savedGuard', inGuard);
+    setState(() {
+      savedCustId = custId;
+      // savedGuard = inGuard;
+    });
+  }
+  // 저장된 정보 불러오기
+  Future<void> _loadStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      savedCustId = prefs.getString('savedCustId') ?? '';
+      savedGuard = prefs.getBool('savedGuard') ?? false;
+    });
+  }
+
+  // 해제
+  Widget _isUnlock() {
+    return const Center(
+      child: Text.rich(
+        TextSpan(
+          text: "현재 ",
+          children: [
+            TextSpan(
+              text: "해제 ",
+              style: TextStyle(color: Colors.green),
+              children: [
+                TextSpan(
+                    text: "상태 입니다.",
+                    style: TextStyle(color: Colors.black)
+                ),
+              ],
+            ),
+          ],
+        ),
+        style: TextStyle(fontSize: 25),
+      ),
+    );
+  }
+
+  // 경계
+  Widget _isLock() {
+    return const Center(
+      child: Text.rich(
+        TextSpan(
+          text: "현재 ",
+          children: [
+            TextSpan(
+              text: "경계 ",
+              style: TextStyle(color: Color.fromRGBO(235, 11, 0, 1)),
+              children: [
+                TextSpan(
+                    text: "상태 입니다.",
+                    style: TextStyle(color: Colors.black)
+                ),
+              ],
+            ),
+          ],
+        ),
+        style: TextStyle(fontSize: 25),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.of(context).size;
-    Image resetImg = Image.asset('assets/slice/_Reset.png');  // 해제
-    Image setImg = Image.asset('assets/slice/_Set.png');      // 경계
+    Image resetImg = Image.asset('assets/slice/_Reset.png', width: size.width * 0.5,);  // 해제
+    Image setImg = Image.asset('assets/slice/_Set.png', width: size.width * 0.5,);      // 경계
 
     // 상단 바, 드롭다운
     var top = SafeArea(
@@ -193,7 +270,51 @@ class _MainPageState extends State<MainPage> {
               )
           ),
         ),
+    );
 
+    // 경계/해제 이미지
+    var lockUnlock = Scaffold(
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          Image.asset('assets/slice/bg_lock.png',
+            height: size.height * 0.9,
+            width: size.width,
+            fit: BoxFit.contain,),
+          if (savedGuard) ...[
+            Positioned(
+              top: 10,
+              child: _isLock(),
+            ),
+            Positioned(
+              bottom: 0,
+              child: setImg,
+            ),
+          ] else ...[
+            Positioned(
+              top: 10,
+              child: _isUnlock(),
+            ),
+            Positioned(
+              bottom: 0,
+              child: resetImg,
+            ),
+          ]
+        ],
+      ),
+    );
+
+    // 버튼
+    var btn = Button();
+
+    // 배너
+    var banner = Container(
+      margin: EdgeInsets.fromLTRB(0, size.height*0.06, 0, 0),
+      child: Scaffold(
+        body: Image.asset('assets/slice/banner.png',
+          fit: BoxFit.fitWidth,
+          width: double.infinity,),
+      ),
     );
 
     return MaterialApp(
@@ -201,7 +322,9 @@ class _MainPageState extends State<MainPage> {
         body: Column(
         children: [
           Expanded(child: top),
-          Expanded(child: Text('phone: $phone \n id: $id \n pw: $pw \n server: $serverAddress'),),
+          Expanded(child: lockUnlock),
+          Expanded(child: btn),
+          Expanded(child: banner),
         ],
         ),
       ),
