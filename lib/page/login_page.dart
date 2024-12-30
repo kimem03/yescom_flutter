@@ -16,12 +16,12 @@ import 'home_page.dart';
 import '../providers/user_info.dart';   // 전역 변수 import
 
 // 상태 정보 전송 함수
-class LoginUtils {
-  static String sendStatus(String phone, String id, String pw) {
-    String hexPw = utf8.encode(pw).map((e) => e.toRadixString(16).padRight(2, '0')).join();
-    return "phone=$phone&id=$id&pw=$hexPw&method=currentstatus";
-  }
-}
+// class LoginUtils {
+//   static String sendStatus(String phone, String id, String pw) {
+//     // String hexPw = utf8.encode(pw).map((e) => e.toRadixString(16).padRight(2, '0')).join();
+//     return "phone=$phone&id=$id&pw=$pw&method=currentstatus";
+//   }
+// }
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -151,7 +151,7 @@ class _LoginPageState extends State<LoginPage> {
 
   // ID 초기화
   Future<void> _clearId() async {
-    await storage.delete(key: 'savedId');
+    // await storage.delete(key: 'savedId');
     setState(() {
       _idController.clear();
     });
@@ -159,7 +159,7 @@ class _LoginPageState extends State<LoginPage> {
 
   // PW 초기화
   Future<void> _clearPw() async {
-    await storage.delete(key: 'savedPw');
+    // await storage.delete(key: 'savedPw');
     setState(() {
       _pwController.clear();
     });
@@ -278,9 +278,6 @@ class _LoginPageState extends State<LoginPage> {
           setState(() {
             result = jsonResult['Result'];
           });
-
-          if(result == 'OK'){
-          }
         }
       } catch (e) {
         log("단말기 정보 전송 중 오류 발생: $e");
