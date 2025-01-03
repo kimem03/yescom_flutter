@@ -5,8 +5,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cp949_codec/cp949_codec.dart';
+import 'package:yescom_front/providers/status_info.dart';
 import 'package:yescom_front/widget/button.dart';
 
 import '../api/server_service.dart';
@@ -41,28 +43,12 @@ class _MainPageState extends State<MainPage> {
   String savedCustId = "";
   bool savedGuard = false;
 
-  String? dropdownValue = "";  // 드롭다운 기본 요소
-
-  // 경계/해제 이미지 상태를 변경하는 메서드
-  void toggleGuard() {
-    setState(() {
-      savedGuard = !savedGuard;  // savedGuard 값을 반전시켜 경계/해제 상태를 변경
-    });
-  }
+  String dropdownValue = "";  // 드롭다운 기본 요소
 
   @override
   void initState(){
     super.initState();
-    _loadStatusInfo();
-    _loadStatus();
-
-    if (custNameList.isNotEmpty) {
-      dropdownValue = custNameList.first;
-      custId = custIdList.first;
-      inGuard = inGuardList.first;
-    } else {
-      dropdownValue = ''; // 기본값을 설정
-    }
+    _initializeDropdown();
   }
 
   // 서버 주소 불러오기
@@ -143,49 +129,14 @@ class _MainPageState extends State<MainPage> {
     return decodedString;
   }
 
-  // 드롭 다운 요소
-  Widget _dropdown() {
-    if (custNameList.isNotEmpty) {
-      dropdownValue = custNameList.first;
-      custId = custIdList.first;
-      inGuard = inGuardList.first;
-    }
-
-    return DropdownButton<String>(
-      key: dropdownKey,
-      value: dropdownValue,
-      items: custNameList.map<DropdownMenuItem<String>>((String value){
-        return DropdownMenuItem<String>(
-            value: value,
-            child: Text(value)
-        );
-      }).toList()
-      , onChanged: (String? value) {
-        if (value != null) {
-          setState(() {
-            dropdownValue = value;
-            // 선택된 값에 따라 `custId`와 `inGuard` 업데이트
-            int index = custNameList.indexOf(value);
-            custId = custIdList[index];
-            inGuard = inGuardList[index];
-            _saveStatus();
-            log('저장된 상태: $savedGuard');
-            log('저장된 id: $savedCustId');
-          });
-        }
-      },
-    );
-  }
-  // 드롭 다운 요소
-
   // 정보 저장
   Future<void> _saveStatus() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     prefs.setString('savedCustId', custId);
-    // prefs.setBool('savedGuard', inGuard);
+    prefs.setBool('savedGuard', inGuard);
     setState(() {
       savedCustId = custId;
-      // savedGuard = inGuard;
+      savedGuard = inGuard;
     });
   }
   // 저장된 정보 불러오기
@@ -196,6 +147,53 @@ class _MainPageState extends State<MainPage> {
       savedGuard = prefs.getBool('savedGuard') ?? false;
     });
   }
+
+  // 드롭다운 초기화 함수
+  Future<void> _initializeDropdown() async {
+    await _loadStatusInfo(); // 데이터를 먼저 로드
+
+    // 데이터 로딩 후 상태 업데이트
+    if (custNameList.isNotEmpty) {
+      setState(() {
+        dropdownValue = custNameList.first;
+        custId = custIdList.first;
+        inGuard = inGuardList.first;
+      });
+    } else {
+      setState(() {
+        dropdownValue = '';  // 기본값 설정
+      });
+    }
+  }
+
+  // 드롭 다운 요소
+  Widget _dropdown() {
+    return DropdownButton<String>(
+      key: dropdownKey,
+      value: dropdownValue.isEmpty ? null : dropdownValue,
+      items: custNameList.map<DropdownMenuItem<String>>((String value){
+        return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value)
+        );
+      }).toList()
+      , onChanged: (String? value) {
+      if (value != null) {
+        setState(() {
+          dropdownValue = value;
+          // 선택된 값에 따라 custId와 inGuard 업데이트
+          int index = custNameList.indexOf(value);
+          custId = custIdList[index];
+          inGuard = inGuardList[index];
+          _saveStatus();
+          log('저장된 상태: $savedGuard');
+          log('저장된 id: $savedCustId');
+        });
+      }
+    },
+    );
+  }
+  // 드롭 다운 요소
 
   // 해제
   Widget _isUnlock() {
@@ -253,23 +251,23 @@ class _MainPageState extends State<MainPage> {
 
     // 상단 바, 드롭다운
     var top = SafeArea(
-        child: Scaffold(
-          appBar: const PreferredSize(
-              preferredSize: Size.fromHeight(70),
-              child: Appbar(),
-          ),
-          body: SafeArea(
-              child: Center(
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Image.asset('assets/slice/table_head_bg.png', width: size.width * 0.9,),
-                    _dropdown(),
-                  ],
-                ),
-              )
-          ),
+      child: Scaffold(
+        appBar: const PreferredSize(
+          preferredSize: Size.fromHeight(70),
+          child: Appbar(),
         ),
+        body: SafeArea(
+            child: Center(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.asset('assets/slice/table_head_bg.png', width: size.width * 0.9,),
+                  _dropdown(),
+                ],
+              ),
+            )
+        ),
+      ),
     );
 
     // 경계/해제 이미지
@@ -320,15 +318,14 @@ class _MainPageState extends State<MainPage> {
     return MaterialApp(
       home: Scaffold(
         body: Column(
-        children: [
-          Expanded(child: top),
-          Expanded(child: lockUnlock),
-          Expanded(child: btn),
-          Expanded(child: banner),
-        ],
+          children: [
+            Expanded(child: top),
+            Expanded(child: lockUnlock),
+            Expanded(child: btn),
+            Expanded(child: banner),
+          ],
         ),
       ),
     );
   }
-
 }
