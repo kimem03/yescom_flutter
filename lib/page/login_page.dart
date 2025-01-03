@@ -53,6 +53,7 @@ class _LoginPageState extends State<LoginPage> {
   String savedPhone = "";   // 인증 완료 후 저장된 전화번호
   String savedId = "";      // id 저장
   String savedPw = "";      // pw 저장
+  // String savedToken = "";   // 디바이스 토큰 저장
 
   String serverAddress = "";  // 서버 주소
   String result = "";    // json 결과값
@@ -195,6 +196,11 @@ class _LoginPageState extends State<LoginPage> {
     return serverAddress;
   }
 
+  // 토큰 정보 저장
+  Future<void> _saveToken() async {
+    await storage.write(key: 'savedToken', value: dToken);
+  }
+
   // 로그인 정보 전송
   Future<void> _sendLoginInfo() async {
     // Ensure savedPhone is loaded
@@ -202,10 +208,6 @@ class _LoginPageState extends State<LoginPage> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       savedPhone = prefs.getString('savedPhone') ?? '';
     }
-    // if (Provider.of<UserInfo>(context, listen: false).phone.isEmpty) {
-    //   SharedPreferences prefs = await SharedPreferences.getInstance();
-    //   savedPhone = prefs.getString('savedPhone') ?? '';
-    // }
 
     // 서버 주소 받아오기
     // Future<String>이기 때문에 비동기로 받아야 함 (await)
@@ -277,6 +279,7 @@ class _LoginPageState extends State<LoginPage> {
           final Map<String, dynamic> jsonResult = jsonDecode(response.body);
           setState(() {
             result = jsonResult['Result'];
+            _saveToken();
           });
         }
       } catch (e) {

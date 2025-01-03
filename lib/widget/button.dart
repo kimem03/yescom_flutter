@@ -4,10 +4,9 @@ import 'dart:developer';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:yescom_front/providers/status_info.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../api/server_service.dart';
 
@@ -25,6 +24,7 @@ class _ButtonState extends State<Button> {
   String id = "";
   String pw = "";
   String hexPw = "";
+  String token = "";
 
   String result = "";
   String custId = "";
@@ -58,6 +58,7 @@ class _ButtonState extends State<Button> {
     id = await storage.read(key: 'savedId') ?? '';
     pw = await storage.read(key: 'savedPw') ?? '';
     hexPw = utf8.encode(pw).map((e) => e.toRadixString(16).padRight(2, '0')).join();
+    token = await storage.read(key: 'savedToken') ?? '';
 
     String control = "phone=$phone&id=$id&pw=$hexPw&method=remotecontrol&custid=$custId&mode=$mode";
     String controlUrl = serverAddress + control;
@@ -67,6 +68,7 @@ class _ButtonState extends State<Button> {
       final response = await http.get(Uri.parse(controlUrl));
 
       if (response.statusCode == 200) {
+        log('전송 주소: $controlUrl');
         setState(() {
           if(mode == "1") {
             prefs.setBool('savedGuard', true);
@@ -96,26 +98,38 @@ class _ButtonState extends State<Button> {
     });
   }
 
+  // 토스트 메시지
+  void showToast(String msg) {
+    Fluttertoast.showToast(
+        msg: msg,
+        gravity: ToastGravity.BOTTOM,   // 토스트 메시지 띄울 위치
+        backgroundColor: Colors.grey,
+        fontSize: 20,
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT   // 토스트 메시지 띄우는 시간
+    );
+  }
+
   // 경계 버튼 클릭 다이얼로그
   Future<void> _showLockDialog(BuildContext context) {
-    if (guard) {
-      // guard가 true일 때: 이미 경계 상태임
-      return showDialog(
-        barrierDismissible: false, // dialog 외부 탭 닫힘 방지
-        context: context,
-        builder: (BuildContext context) =>
-            AlertDialog(
-              title: const Text('알림'),
-              content: const Text('이미 경계 상태입니다.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('확인'),
-                ),
-              ],
-            ),
-      );
-    } else {
+    // if (guard) {
+    //   // guard가 true일 때: 이미 경계 상태임
+    //   return showDialog(
+    //     barrierDismissible: false, // dialog 외부 탭 닫힘 방지
+    //     context: context,
+    //     builder: (BuildContext context) =>
+    //         AlertDialog(
+    //           title: const Text('알림'),
+    //           content: const Text('이미 경계 상태입니다.'),
+    //           actions: [
+    //             TextButton(
+    //               onPressed: () => Navigator.of(context).pop(),
+    //               child: const Text('확인'),
+    //             ),
+    //           ],
+    //         ),
+    //   );
+    // } else {
       return showDialog(
           barrierDismissible: false, // dialog 외부 탭 해도 닫히기 않게끔
           context: context,
@@ -136,6 +150,7 @@ class _ButtonState extends State<Button> {
                       }),
                         _remoteControl(),
                         _saveStatus(),
+                        showToast("경계 요청을 보냈습니다."),
                         Navigator.of(context).pop(),
                       },
                       child: const Text('네')
@@ -152,29 +167,29 @@ class _ButtonState extends State<Button> {
               )
       );
     }
-  }
+  // }
   // 경계 버튼 클릭 다이얼로그
 
   // 해제 버튼 클릭 다이얼로그
   Future<void> _showUnlockDialog(BuildContext context) {
-    if (!guard) {
-      // guard가 false일 때: 이미 해제 상태임
-      return showDialog(
-        barrierDismissible: false, // dialog 외부 탭 닫힘 방지
-        context: context,
-        builder: (BuildContext context) =>
-            AlertDialog(
-              title: const Text('알림'),
-              content: const Text('이미 해제 상태입니다.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('확인'),
-                ),
-              ],
-            ),
-      );
-    } else {
+    // if (!guard) {
+    //   // guard가 false일 때: 이미 해제 상태임
+    //   return showDialog(
+    //     barrierDismissible: false, // dialog 외부 탭 닫힘 방지
+    //     context: context,
+    //     builder: (BuildContext context) =>
+    //         AlertDialog(
+    //           title: const Text('알림'),
+    //           content: const Text('이미 해제 상태입니다.'),
+    //           actions: [
+    //             TextButton(
+    //               onPressed: () => Navigator.of(context).pop(),
+    //               child: const Text('확인'),
+    //             ),
+    //           ],
+    //         ),
+    //   );
+    // } else {
       return showDialog(
           barrierDismissible: false, // dialog 외부 탭 해도 닫히기 않게끔
           context: context,
@@ -194,6 +209,7 @@ class _ButtonState extends State<Button> {
                         }),
                         _remoteControl(),
                         _saveStatus(),
+                        showToast("해제 요청을 보냈습니다."),
                         Navigator.of(context).pop(),
                       },
                       child: const Text('네')
@@ -210,7 +226,7 @@ class _ButtonState extends State<Button> {
               )
       );
     }
-  }
+  // }
   // 해제 버튼 클릭 다이얼로그
 
   // 문열림 버튼 클릭 다이얼로그
@@ -227,6 +243,7 @@ class _ButtonState extends State<Button> {
                   // 서버로 상태 변경 요청 메소드 전송 (RemoteControl)
                   mode = "3",
                   _remoteControl(),
+                  showToast("문열림 요청을 보냈습니다."),
                   Navigator.of(context).pop(),
                 },
                 child: const Text('네')
@@ -246,8 +263,6 @@ class _ButtonState extends State<Button> {
 
   @override
   Widget build(BuildContext context) {
-    final Size size = MediaQuery.of(context).size;
-
     // 경계 버튼
     var lock = MaterialButton(
       onPressed: (){ _showLockDialog(context); },

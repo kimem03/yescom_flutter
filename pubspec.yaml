@@ -44,6 +44,7 @@ dependencies:
 
   firebase_core: ^3.9.0
   firebase_messaging: ^15.1.6
+  flutter_local_notifications: ^18.0.1
 
   device_info_plus: ^11.2.0
 
@@ -51,6 +52,7 @@ dependencies:
   dio: ^5.7.0
 
   cp949_codec: ^1.0.2
+  fluttertoast: ^8.2.10
 
 dev_dependencies:
   flutter_test:
